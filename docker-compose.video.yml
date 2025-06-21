@@ -2,13 +2,8 @@ version: '3.8'
 
 services:
   video-processor:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: video-processor
-    restart: unless-stopped
-    
-    # Configuração do Traefik (opcional - descomente se quiser expor via web)
+    image: gabrielpi/video-processor:latest
+
     labels:
       - traefik.enable=true
       - traefik.http.routers.video-processor.rule=Host(`video.${DOMAIN_NAME}`)
@@ -16,48 +11,36 @@ services:
       - traefik.http.routers.video-processor.entrypoints=web,websecure
       - traefik.http.routers.video-processor.tls.certresolver=leresolver
       - traefik.http.services.video-processor.loadbalancer.server.port=5000
-      - traefik.http.middlewares.video-auth.basicauth.users=admin:$$2y$$10$$hBcoTrigger
-    
-    # Portas (apenas para acesso interno - remova se usar Traefik)
+      - traefik.http.middlewares.video-auth.basicauth.users="admin:$$2y$$10$$hBcoTrigger"
+
     ports:
-      - "5000:5000"  # Comente esta linha se usar apenas Traefik
-    
+      - "5000:5000"
+
     volumes:
-      # Integração com volumes do n8n existentes
-      - /root/n8n-videos:/app/downloads  # Usar mesmo diretório do n8n
-      - /root/n8n-videos/cuts:/app/cuts  # Subpasta para cortes
-      - video_temp:/app/temp             # Volume temporário
-      
-      # Alternativa: usar volumes locais (descomente se preferir separado)
-      # - ./downloads:/app/downloads
-      # - ./cuts:/app/cuts
-      # - ./temp:/app/temp
-    
+      - /root/n8n-videos:/app/downloads
+      - /root/n8n-videos/cuts:/app/cuts
+      - video_temp:/app/temp
+
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
-      
-      # Configurações opcionais da aplicação
       - MAX_DOWNLOAD_SIZE=2GB
       - CLEANUP_INTERVAL=24h
       - ALLOWED_DOMAINS=youtube.com,youtu.be
       - LOG_LEVEL=INFO
-      
-      # Se precisar de variáveis do n8n
       - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
       - WEBHOOK_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}
-    
+
     networks:
-      - n8n  # Usar a mesma rede do n8n
-    
+      - n8n
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    
-    # Limites de recursos (ajuste conforme necessário)
+
     deploy:
       resources:
         limits:
@@ -73,4 +56,4 @@ volumes:
 
 networks:
   n8n:
-    external: true  # Usar a rede n8n existente 
+    external: true
