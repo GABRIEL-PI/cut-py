@@ -1,347 +1,255 @@
-# Sistema de Processamento de Vídeo para n8n
+# Plataforma de Download e Corte de Vídeos Multiplataforma
 
-Este projeto permite baixar e cortar vídeos do YouTube através de uma API REST, integrando perfeitamente com n8n para automação de workflows.
+Este projeto implementa uma API para download e corte de vídeos de múltiplas plataformas (YouTube, Instagram, TikTok, Pinterest), seguindo princípios de arquitetura limpa e SOLID.
 
-## 🚀 Funcionalidades
+---
 
-- **Download de vídeos**: Baixa vídeos do YouTube usando yt-dlp
-- **Corte de vídeos**: Corta vídeos em segmentos específicos usando MoviePy
-- **API REST**: Interface HTTP para integração com n8n
-- **Processamento assíncrono**: Tarefas executadas em background
-- **Monitoramento**: Endpoints para verificar status das tarefas
-- **Gerenciamento de arquivos**: Listagem e limpeza automática
-- **Dockerizado**: Pronto para deploy com Docker/Portainer
+## 🧾 **PRD – Plataforma de Download e Corte de Vídeos Multiplataforma**
 
-## 📋 Pré-requisitos
+### 📌 Visão Geral
 
-- Docker e Docker Compose
-- n8n rodando (se não tiver, o docker-compose pode criar um)
-- Portainer (opcional, para gerenciamento visual)
+O objetivo do sistema é permitir que usuários façam o download de vídeos e shorts de plataformas como YouTube, Instagram, TikTok e Pinterest, armazenem localmente, e realizem cortes automatizados. O sistema será modular, escalável, seguindo os princípios **SOLID** e utilizando MySQL como persistência de dados.
 
-## 🔧 Instalação e Configuração
+---
 
-### 1. Clone e Configure o Projeto
+## Como Usar
+1. 1.
+   Configure o arquivo .env com suas credenciais de banco de dados.
+2. 2.
+   Execute python database/init_db.py para inicializar o banco de dados.
+3. 3.
+   Execute python main.py para iniciar a aplicação.
+4. 4.
+   A API estará disponível em http://localhost:5000 .
+Você também pode usar o script run_dev.py para configurar o ambiente e iniciar a aplicação em um único comando.
 
-```bash
-# Já está no seu diretório do projeto
-# Certifique-se que todos os arquivos estão presentes
-ls -la
+Para testar a implementação do repositório MySQL, execute python test_mysql_repository.py .
+
+A aplicação agora está pronta para uso, com todas as funcionalidades mantidas, mas usando o mysql_repository.py em vez do SQLAlchemy para operações de banco de dados.
+
+## 🎯 Objetivos
+
+* Baixar vídeos e shorts de múltiplas plataformas.
+* Armazenar metadados em MySQL.
+* Cortar vídeos com base em regras (duração, highlights, AI etc.).
+* Organizar arquivos por pastas (`downloads/`, `cuts/`, `temp/`).
+* Fornecer uma API REST para controlar e monitorar tarefas.
+* Estrutura modular com controllers, services, repositories, routers.
+
+---
+
+## 🏗️ Arquitetura de Diretórios
+
+```
+/
+├── app/
+│   ├── config.py
+│   ├── controllers/
+│   ├── services/
+│   ├── repositories/
+│   ├── models/
+│   ├── routes/
+│   └── utils/
+├── downloads/
+├── cuts/
+├── temp/
+├── tests/
+├── main.py
+├── requirements.txt
+├── Dockerfile
+└── README.md
 ```
 
-### 2. Configure a Rede do Docker
+---
 
-Se você já tem n8n rodando, primeiro descubra qual rede ele está usando:
+## 🧩 Componentes Técnicos
 
-```bash
-# Listar redes existentes
-docker network ls
+### 🔧 **Dependências Sugeridas**
 
-# Ver detalhes de uma rede específica (substitua pelo nome da sua rede n8n)
-docker network inspect NOME_DA_REDE_N8N
-```
+| Finalidade             | Pacote Python                     |
+| ---------------------- | --------------------------------- |
+| YouTube downloads      | `pytube` ou `yt_dlp`              |
+| TikTok/Instagram/etc.  | `yt_dlp` (suporte genérico amplo) |
+| Processamento de vídeo | `moviepy` ou `ffmpeg-python`      |
+| API                    | `FastAPI` ou `Flask`              |
+| ORM                    | `SQLAlchemy`                      |
+| Banco de dados         | MySQL                             |
+| Variáveis de ambiente  | `python-dotenv`                   |
+| Log                    | `loguru` ou `logging`             |
 
-Edite o `docker-compose.yml` e ajuste a seção `networks`:
+---
 
-```yaml
-networks:
-  n8n-network:
-    driver: bridge
-    external: true  # Se já existe
-    # name: NOME_DA_SUA_REDE_N8N  # Descomente e ajuste se necessário
-```
+## 🔌 Integrações
 
-### 3. Deploy com Docker Compose
+### 🟣 YouTube / TikTok / Instagram / Pinterest
 
-```bash
-# Construir e iniciar o serviço
-docker-compose up -d --build
+Usar `yt_dlp`, que já suporta a maioria dessas plataformas:
 
-# Verificar se está rodando
-docker-compose ps
+```python
+from yt_dlp import YoutubeDL
 
-# Ver logs se necessário
-docker-compose logs -f video-processor
-```
-
-### 4. Deploy no Portainer (Alternativo)
-
-1. Acesse seu Portainer
-2. Vá em "Stacks"
-3. Clique em "Add stack"
-4. Cole o conteúdo do `docker-compose.yml`
-5. Ajuste as variáveis conforme necessário
-6. Deploy
-
-## 📡 API Endpoints
-
-### Base URL
-```
-http://localhost:5000
-```
-(ou `http://video-processor:5000` de dentro do n8n)
-
-### Endpoints Disponíveis
-
-#### 1. Health Check
-```http
-GET /health
-```
-
-#### 2. Download de Vídeo
-```http
-POST /download
-Content-Type: application/json
-
-{
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "filename": "meu_video" // opcional
+ydl_opts = {
+    'outtmpl': 'downloads/%(id)s.%(ext)s',
 }
+with YoutubeDL(ydl_opts) as ydl:
+    ydl.download([video_url])
 ```
 
-#### 3. Cortar Vídeo
-```http
-POST /cut
-Content-Type: application/json
+---
 
-{
-  "input_file": "meu_video.mp4",
-  "start_time": "00:01:30",
-  "end_time": "00:02:45",
-  "output_filename": "corte_meu_video.mp4" // opcional
-}
+## ⚙️ Funcionalidades
+
+### 1. 🎥 **Download de Vídeo**
+
+* Input: URL
+* Output: Arquivo em `/downloads/`
+* Salva no banco: ID do vídeo, plataforma, status, caminho do arquivo, duração, etc.
+
+### 2. ✂️ **Corte de Vídeo**
+
+* Input: ID do vídeo, tempo de início/fim ou lógica automática (ex: shorts)
+* Output: `/cuts/video_id_cut.mp4`
+
+### 3. 📁 **Gerenciamento de Arquivos**
+
+* Limpeza da pasta `/temp/`
+* Organização por data ou ID
+
+### 4. 📦 **API REST**
+
+* `POST /videos`: iniciar download
+* `GET /videos/{id}`: status e metadados
+* `POST /videos/{id}/cut`: cortar vídeo
+* `GET /videos/{id}/file`: baixar arquivo
+
+---
+
+## 🧱 Estrutura SOLID (Exemplo de Separação de Camadas)
+
+### ✔️ `Controllers`: Validação + resposta HTTP
+
+### ✔️ `Services`: Regras de negócio (ex: baixar, cortar)
+
+### ✔️ `Repositories`: Abstração de banco
+
+### ✔️ `Models`: ORM (SQLAlchemy)
+
+### ✔️ `Routes`: Define os endpoints (FastAPI)
+
+### ✔️ `Utils`: Execução de comandos, ferramentas auxiliares
+
+---
+
+## 🔐 Banco de Dados (MySQL)
+
+### Tabela: `videos`
+
+```sql
+CREATE TABLE videos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    platform VARCHAR(50),
+    url TEXT,
+    filename VARCHAR(255),
+    status ENUM('pending', 'downloading', 'completed', 'error'),
+    duration FLOAT,
+    created_at DATETIME,
+    updated_at DATETIME
+);
 ```
 
-#### 4. Download e Corte em Uma Operação
-```http
-POST /download-and-cut
-Content-Type: application/json
+---
 
-{
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "start_time": "00:00:30",
-  "end_time": "00:01:00",
-  "filename": "video_original", // opcional
-  "output_filename": "video_cortado.mp4" // opcional
-}
+## 🧪 Testes
+
+Cobertura com `pytest` para:
+
+* `services/`: lógica de download/corte
+* `controllers/`: entrada e saída da API
+* `repositories/`: comunicação com o banco
+
+---
+
+## 🐳 Dockerfile (exemplo)
+
+```Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+CMD ["python", "main.py"]
 ```
 
-#### 5. Consultar Status de Tarefa
-```http
-GET /status/{task_id}
-```
+---
 
-#### 6. Listar Todas as Tarefas
-```http
-GET /tasks
-```
+## 🚀 Plano de Expansão
 
-#### 7. Listar Arquivos
-```http
-GET /files
-```
+* Suporte a IA para sugerir cortes automáticos (Whisper + Gemini)
+* Dashboard web com React ou Svelte
+* Autenticação com JWT
+* Fila de tarefas com Celery ou Redis
 
-#### 8. Download de Arquivo
-```http
-GET /download/{filename}
-```
+---
 
-#### 9. Limpeza de Arquivos
-```http
-POST /clean
-Content-Type: application/json
+## 🚀 Instalação e Uso
 
-{
-  "days": 7 // remove arquivos mais antigos que X dias
-}
-```
+### Pré-requisitos
 
-## 🔄 Integração com n8n
+- Python 3.11+
+- MySQL
+- FFmpeg
 
-### Método 1: Usando HTTP Request Nodes
+### Configuração
 
-1. **Adicione um nó "HTTP Request"** no seu workflow
-2. **Configure a URL**: `http://video-processor:5000/download-and-cut`
-3. **Método**: POST
-4. **Headers**: `Content-Type: application/json`
-5. **Body**: JSON com os parâmetros necessários
+1. Clone o repositório
 
-Exemplo de configuração:
-```json
-{
-  "url": "{{ $json.video_url }}",
-  "start_time": "{{ $json.start_time }}",
-  "end_time": "{{ $json.end_time }}"
-}
-```
-
-### Método 2: Importando Workflows Prontos
-
-Use os exemplos do arquivo `n8n-workflows-examples.json`:
-
-1. Abra o n8n
-2. Vá em "Workflows"
-3. Clique em "Import"
-4. Cole o JSON do workflow desejado
-5. Ajuste conforme necessário
-
-### Exemplos de Uso no n8n
-
-#### Workflow Básico de Download e Corte:
-1. **Manual Trigger** → Inicia manualmente
-2. **HTTP Request** → Chama `/download-and-cut`
-3. **Wait** → Aguarda processamento
-4. **HTTP Request** → Verifica status
-5. **IF** → Verifica se completou
-6. **Function** → Processa resultado
-
-#### Webhook para Automação:
-1. **Webhook Trigger** → Recebe dados externos
-2. **Function** → Processa dados recebidos
-3. **HTTP Request** → Chama API de vídeo
-4. **Wait** → Aguarda processamento
-5. **Email/Slack** → Notifica conclusão
-
-## 🗂️ Estrutura de Arquivos
-
-```
-/app/
-├── downloads/          # Vídeos baixados
-├── cuts/              # Vídeos cortados
-├── temp/              # Arquivos temporários
-├── app.py             # API Flask
-├── download.py        # Script de download
-├── cut.py             # Script de corte
-└── requirements.txt   # Dependências
-```
-
-## 🔧 Configurações Avançadas
-
-### Variáveis de Ambiente
-
-Adicione no `docker-compose.yml`:
-
-```yaml
-environment:
-  - FLASK_ENV=production
-  - MAX_DOWNLOAD_SIZE=500MB  # Tamanho máximo de download
-  - CLEANUP_INTERVAL=24h     # Intervalo de limpeza automática
-  - ALLOWED_DOMAINS=youtube.com,youtu.be  # Domínios permitidos
-```
-
-### Volumes Personalizados
-
-```yaml
-volumes:
-  - /caminho/host/downloads:/app/downloads
-  - /caminho/host/cuts:/app/cuts
-```
-
-### Recursos e Limites
-
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 2G
-      cpus: '1.0'
-    reservations:
-      memory: 1G
-      cpus: '0.5'
-```
-
-## 🚨 Troubleshooting
-
-### Container não inicia
 ```bash
-# Verificar logs
-docker-compose logs video-processor
-
-# Verificar se a porta está em uso
-netstat -tulpn | grep :5000
+git clone https://github.com/seu-usuario/cut-py.git
+cd cut-py
 ```
 
-### Erro de rede no n8n
+2. Instale as dependências
+
 ```bash
-# Verificar se estão na mesma rede
-docker network ls
-docker network inspect NOME_DA_REDE
+pip install -r requirements.txt
 ```
 
-### Erro de permissão
+3. Configure o arquivo `.env` com suas credenciais de banco de dados
+
+```
+DB_HOST=localhost
+DB_PORT=3306
+DB_DATABASE=cut
+DB_USER=seu_usuario
+DB_PASSWORD=sua_senha
+```
+
+4. Inicialize o banco de dados
+
 ```bash
-# Ajustar permissões dos diretórios
-sudo chown -R 1000:1000 downloads cuts temp
+python database/init_db.py
 ```
 
-### Erro de dependências
+### Executando a aplicação
+
 ```bash
-# Reconstruir imagem
-docker-compose build --no-cache video-processor
+python main.py
 ```
 
-## 📊 Monitoramento
+A API estará disponível em `http://localhost:5000`
 
-### Health Check
+### Testando a aplicação
+
 ```bash
-curl http://localhost:5000/health
+python test_api.py
 ```
 
-### Status do Container
+### Testando o repositório MySQL
+
 ```bash
-docker-compose ps
-docker stats video-processor
+python test_mysql_repository.py
 ```
-
-### Logs em Tempo Real
-```bash
-docker-compose logs -f video-processor
-```
-
-## 🔐 Segurança
-
-### Recomendações
-- Use HTTPS em produção
-- Configure autenticação se necessário
-- Limite o tamanho dos uploads
-- Monitore o uso de disco
-- Configure backup dos vídeos importantes
-
-### Firewall
-```bash
-# Permitir apenas conexões locais na porta 5000
-sudo ufw allow from 172.0.0.0/8 to any port 5000
-```
-
-## 📈 Performance
-
-### Otimizações
-- Use SSD para melhor I/O
-- Ajuste a memória conforme necessário
-- Configure limpeza automática
-- Use proxy reverso (nginx)
-
-### Exemplo de configuração nginx:
-```nginx
-location /video-api/ {
-    proxy_pass http://localhost:5000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    client_max_body_size 500M;
-}
-```
-
-## 🆘 Suporte
-
-Para problemas ou dúvidas:
-1. Verifique os logs primeiro
-2. Consulte a seção de troubleshooting
-3. Teste os endpoints individualmente
-4. Verifique a conectividade de rede
-
-## 📝 Changelog
-
-- v1.0.0: Versão inicial com API REST e integração n8n
-- Suporte a download e corte de vídeos
-- Processamento assíncrono
-- Monitoramento de tarefas
-- Limpeza automática de arquivos 
