@@ -69,6 +69,18 @@ class VideoRepository(BaseRepository):
         """
         return self.update(video_id, {"duration": duration, "updated_at": datetime.now()})
     
+    def find_by_id(self, video_id):
+        """
+        Busca um vídeo pelo ID
+        
+        Args:
+            video_id: ID do vídeo
+            
+        Returns:
+            dict: Dados do vídeo ou None se não encontrado
+        """
+        return self.find(video_id)
+    
     def find_by_url(self, url):
         """
         Busca um vídeo pela URL

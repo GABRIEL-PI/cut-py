@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 import threading
 import subprocess
 from datetime import datetime
@@ -240,6 +241,53 @@ class VideoService:
             return {'error': f'Tarefa com ID {task_id} não encontrada'}, 404
         
         return self.tasks[task_id], 200
+        
+    def get_video_error_details(self, video_id):
+        """
+        Obtém detalhes de erro de um vídeo
+        
+        Args:
+            video_id: ID do vídeo
+            
+        Returns:
+            tuple: (detalhes do erro, código de status HTTP)
+        """
+        # Buscar o vídeo no repositório
+        video = self.video_repository.find_by_id(video_id)
+        
+        if not video:
+            return {'error': f'Vídeo com ID {video_id} não encontrado'}, 404
+            
+        if video['status'] != 'error':
+            return {'error': 'Este vídeo não está em estado de erro'}, 400
+            
+        # Buscar tarefas relacionadas a este vídeo
+        error_details = {'video': video}
+        
+        # Procurar nas tarefas por informações de erro relacionadas a este vídeo
+        related_tasks = []
+        for task_id, task in self.tasks.items():
+            # Verificar se o video_id está diretamente na tarefa
+            task_video_id = task.get('video_id')
+            
+            # Se video_id for um dicionário, extrair o ID
+            if isinstance(task_video_id, dict) and 'id' in task_video_id:
+                task_video_id = task_video_id['id']
+                
+            # Comparar com o ID do vídeo
+            if task_video_id == video_id:
+                task_info = {
+                    'task_id': task_id,
+                    'type': task.get('type'),
+                    'status': task.get('status'),
+                    'error': task.get('error'),
+                    'error_details': task.get('error_details')
+                }
+                related_tasks.append(task_info)
+        
+        error_details['related_tasks'] = related_tasks
+        
+        return error_details, 200
     
     def get_all_tasks(self):
         """
@@ -260,7 +308,7 @@ class VideoService:
         Returns:
             dict: Informações do vídeo ou erro
         """
-        video = self.video_repository.find(video_id)
+        video = self.video_repository.find_by_id(video_id)
         if not video:
             return {'error': f'Vídeo com ID {video_id} não encontrado'}, 404
         
@@ -317,6 +365,7 @@ class VideoService:
         try:
             # Atualizar status da tarefa
             self.tasks[task_id]['status'] = 'running'
+            self.tasks[task_id]['progress'] = 0
             
             # Executar comando
             process = subprocess.Popen(
@@ -324,16 +373,44 @@ class VideoService:
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
             )
             
-            # Capturar saída e erro
-            stdout, stderr = process.communicate()
+            # Capturar saída em tempo real
+            output_lines = []
+            for line in process.stdout:
+                output_lines.append(line)
+                print(f"DEBUG - Linha capturada: {line.strip()}")
+                
+                # Extrair JSON da linha
+                try:
+                    # Tentar encontrar o início do JSON na linha
+                    json_start = line.find('{')
+                    if json_start >= 0:
+                        json_str = line[json_start:]
+                        progress_data = json.loads(json_str)
+                        if isinstance(progress_data, dict):
+                            if progress_data.get('status') == 'downloading' and 'percent' in progress_data:
+                                # Atualizar progresso na tarefa
+                                self.tasks[task_id]['progress'] = progress_data['percent']
+                                self.tasks[task_id]['progress_details'] = progress_data
+                                print(f"Download progresso: {progress_data['percent']}%")
+                except Exception as e:
+                    # Ignorar linhas que não são JSON válido
+                    print(f"DEBUG - Erro ao processar JSON: {str(e)}")
+                    pass
+            
+            # Aguardar término do processo
+            process.wait()
+            stderr = process.stderr.read()
             
             # Atualizar tarefa com resultado
             if process.returncode == 0:
                 self.tasks[task_id]['status'] = 'completed'
-                self.tasks[task_id]['output'] = stdout
+                self.tasks[task_id]['output'] = ''.join(output_lines)
+                self.tasks[task_id]['progress'] = 100  # Garantir que o progresso seja 100% ao completar
                 
                 # Atualizar status do vídeo se fornecido
                 if video_id and self.tasks[task_id]['type'] == 'download':
@@ -345,7 +422,32 @@ class VideoService:
                     print(f"Resultado da chamada update_status: {result}")
             else:
                 self.tasks[task_id]['status'] = 'error'
-                self.tasks[task_id]['error'] = stderr
+                
+                # Procurar por informações de erro em formato JSON nas linhas de saída
+                error_details = stderr
+                error_json = None
+                
+                for line in output_lines:
+                    try:
+                        # Tentar encontrar o início do JSON na linha
+                        json_start = line.find('{')
+                        if json_start >= 0:
+                            json_str = line[json_start:]
+                            data = json.loads(json_str)
+                            if isinstance(data, dict) and data.get('status') == 'error':
+                                error_json = data
+                                break
+                    except Exception:
+                        pass
+                
+                # Registrar detalhes do erro
+                if error_json:
+                    self.tasks[task_id]['error'] = error_json.get('error', stderr)
+                    self.tasks[task_id]['error_details'] = error_json
+                    print(f"ERRO DETALHADO (JSON): {error_json}")
+                else:
+                    self.tasks[task_id]['error'] = stderr
+                    print(f"ERRO DETALHADO (stderr): {stderr}")
                 
                 # Atualizar status do vídeo se fornecido
                 if video_id:
@@ -402,6 +504,18 @@ class VideoService:
             if download_process.returncode != 0:
                 self.tasks[task_id]['status'] = 'error'
                 self.tasks[task_id]['error'] = download_stderr
+                
+                # Registrar detalhes do erro
+                error_log = {
+                    'error_type': 'download_error',
+                    'command': download_command,
+                    'stderr': download_stderr,
+                    'return_code': download_process.returncode,
+                    'url': url
+                }
+                print(f"ERRO DE DOWNLOAD DETALHADO: {error_log}")
+                
+                # Atualizar status do vídeo para erro
                 self.video_repository.update_status(video_id, 'error')
                 return
             
@@ -436,7 +550,22 @@ class VideoService:
                 self.video_repository.update_status(video_id, 'error')
         
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            
             # Atualizar tarefa com erro
             self.tasks[task_id]['status'] = 'error'
             self.tasks[task_id]['error'] = str(e)
+            self.tasks[task_id]['error_details'] = {
+                'error_type': 'exception',
+                'error_message': str(e),
+                'traceback': error_traceback,
+                'url': url
+            }
+            
+            # Registrar detalhes do erro
+            print(f"ERRO DE EXCEÇÃO: {str(e)}")
+            print(f"TRACEBACK: {error_traceback}")
+            
+            # Atualizar status do vídeo
             self.video_repository.update_status(video_id, 'error')

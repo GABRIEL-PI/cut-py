@@ -24,6 +24,10 @@ def download_and_cut():
 def get_video(video_id):
     return video_controller.get_video(video_id)
 
+@video_bp.route('/videos/<int:video_id>/error', methods=['GET'])
+def get_video_error(video_id):
+    return video_controller.get_video_error(video_id)
+
 @video_bp.route('/videos', methods=['GET'])
 def get_all_videos():
     return video_controller.get_all_videos()

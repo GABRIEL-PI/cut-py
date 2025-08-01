@@ -126,6 +126,21 @@ class VideoController:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
     
+    def get_video_error(self, video_id):
+        """
+        Endpoint para obter detalhes de erro de um vídeo
+        
+        Args:
+            video_id: ID do vídeo
+        """
+        try:
+            # Obter detalhes de erro do vídeo
+            error_details, status_code = self.video_service.get_video_error_details(video_id)
+            return jsonify(error_details), status_code
+            
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
     def get_all_videos(self):
         """
         Endpoint para listar todos os vídeos
