@@ -1,20 +1,37 @@
-from flask import Flask
-from app.routes.video_routes import video_bp
-from app.routes.health_routes import health_bp
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes.video_routes import router as video_router
+from app.routes.health_routes import router as health_router
+from app.jobs.cookie_update_job import CookieUpdateJob
 
 def create_app():
     """
-    Cria e configura a aplicação Flask
+    Cria e configura a aplicação FastAPI
     
     Returns:
-        Flask: Aplicação Flask configurada
+        FastAPI: Aplicação FastAPI configurada
     """
-    # Criar aplicação Flask
-    app = Flask(__name__)
+    # Criar aplicação FastAPI
+    app = FastAPI(title="Video Processing API")
     
-    # Registrar blueprints
-    app.register_blueprint(video_bp)
-    app.register_blueprint(health_bp)
+    # Configurar CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Incluir routers
+    app.include_router(video_router)
+    app.include_router(health_router)
+    
+    # Iniciar job de atualização de cookies
+    @app.on_event("startup")
+    def start_cookie_update_job():
+        cookie_job = CookieUpdateJob()
+        cookie_job.start()
     
     return app
 

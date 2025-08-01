@@ -1,14 +1,16 @@
-from flask import Blueprint, jsonify
+from fastapi import APIRouter
 from datetime import datetime
+import pytz
+from app.models.video_models import HealthResponse
 
-# Criar blueprint para rotas de health check
-health_bp = Blueprint('health', __name__)
+# Criar router para rotas de health check
+router = APIRouter(tags=["Health"])
 
-@health_bp.route('/health', methods=['GET'])
+@router.get('/health', response_model=HealthResponse)
 def health():
     """Endpoint de verificação de saúde"""
-    return jsonify({
+    return {
         'status': 'ok',
         'message': 'Video Processing API is running',
         'timestamp': datetime.now().isoformat()
-    })
+    }

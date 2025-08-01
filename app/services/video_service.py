@@ -4,8 +4,13 @@ import json
 import threading
 import subprocess
 from datetime import datetime
+from typing import Dict, Any, Tuple, Optional, List, Union
+from urllib.parse import urlparse
 from app.repositories.video_repository import VideoRepository
 from app.config import DOWNLOADS_DIR, CUTS_DIR, TEMP_DIR
+from app.utils.cookie_manager import CookieManager
+from app.config.cookies import get_cookies_file_path, is_valid_browser
+from app.services.auth_service import AuthService, SUPPORTED_PLATFORMS
 
 class VideoService:
     """
@@ -18,18 +23,28 @@ class VideoService:
         """
         self.video_repository = VideoRepository()
         self.tasks = {}
+        self.auth_service = AuthService()
     
-    def download_video(self, url, filename=None):
+    def download_video(self, url, filename=None, validate=True, cookies=None, cookies_from_browser=None):
         """
         Inicia o download de um vídeo
         
         Args:
             url: URL do vídeo
             filename: Nome do arquivo (opcional)
+            validate: Validar a URL antes de iniciar o download (padrão: True)
+            cookies: Caminho para o arquivo de cookies (opcional)
+            cookies_from_browser: Navegador para extrair cookies (chrome, firefox, opera, edge, safari) (opcional)
             
         Returns:
-            dict: Informações da tarefa iniciada
+            tuple: (resultado, status_code) - Informações da tarefa iniciada e código de status HTTP
         """
+        # Validar URL se solicitado
+        if validate:
+            # Verificar se a URL é válida
+            if not url or not isinstance(url, str) or not url.startswith(('http://', 'https://')):
+                return {'error': 'URL inválida'}, 400
+                
         # Gerar nome de arquivo se não fornecido
         if not filename:
             filename = f'video_{uuid.uuid4().hex[:8]}'
@@ -71,18 +86,56 @@ class VideoService:
         # Comando para download
         command = f'python download.py --url "{url}" --output "{output_path}"'
         
+        # Processar parâmetros de cookies
+        cookies_file = None
+        
+        # Se um arquivo de cookies foi fornecido
+        if cookies:
+            cookies_file = get_cookies_file_path(cookies)
+            if not CookieManager.verify_cookies_file(cookies_file):
+                print(f"Arquivo de cookies não encontrado ou inválido: {cookies_file}")
+                cookies_file = None
+        
+        # Se foi solicitado extrair cookies do navegador
+        if cookies_from_browser and is_valid_browser(cookies_from_browser):
+            # Extrair cookies do navegador
+            extracted_cookies = CookieManager.save_cookies_from_browser(
+                browser_name=cookies_from_browser
+            )
+            if extracted_cookies:
+                cookies_file = extracted_cookies
+        
+        # Se não tiver cookies ainda, tentar obter do serviço de autenticação centralizada
+        if not cookies_file:
+            # Determinar a plataforma para buscar cookies centralizados
+            platform_name = self._get_platform_name(platform)
+            if platform_name in SUPPORTED_PLATFORMS:
+                central_cookies = self.auth_service.get_cookies_file(platform_name)
+                if central_cookies:
+                    cookies_file = central_cookies
+                    print(f"Usando cookies centralizados para: {platform_name}")
+
+        
+        # Adicionar parâmetro de cookies ao comando se disponível
+        if cookies_file and os.path.exists(cookies_file):
+            command += f' --cookies "{cookies_file}"'
+        elif cookies_from_browser:
+            command += f' --cookies-from-browser "{cookies_from_browser}"'
+        
         # Executar em thread separada
         thread = threading.Thread(target=self._run_command, args=(task_id, command, video_id))
         thread.daemon = True
         thread.start()
         
-        return {
+        result = {
             'task_id': task_id,
             'video_id': video_id,
             'status': 'started',
             'message': 'Download iniciado',
             'output_path': output_path
         }
+        
+        return result, 200
     
     def cut_video(self, video_id, start_time, end_time, output_filename=None):
         """
@@ -152,7 +205,7 @@ class VideoService:
             'output_path': output_path
         }
     
-    def download_and_cut(self, url, start_time, end_time, filename=None, output_filename=None):
+    def download_and_cut(self, url, start_time, end_time, filename=None, output_filename=None, cookies=None, cookies_from_browser=None):
         """
         Inicia o download e corte de um vídeo em uma operação
         
@@ -162,6 +215,8 @@ class VideoService:
             end_time: Tempo final do corte (formato HH:MM:SS)
             filename: Nome do arquivo de download (opcional)
             output_filename: Nome do arquivo de saída (opcional)
+            cookies: Caminho para o arquivo de cookies (opcional)
+            cookies_from_browser: Navegador para extrair cookies (chrome, firefox, opera, edge, safari) (opcional)
             
         Returns:
             dict: Informações da tarefa iniciada
@@ -213,7 +268,7 @@ class VideoService:
         # Iniciar thread para download e corte
         thread = threading.Thread(
             target=self._download_and_cut_thread,
-            args=(task_id, url, download_path, cut_path, start_time, end_time, video_id)
+            args=(task_id, url, download_path, cut_path, start_time, end_time, video_id, cookies, cookies_from_browser)
         )
         thread.daemon = True
         thread.start()
@@ -353,6 +408,28 @@ class VideoService:
         else:
             return 'unknown'
     
+    def _get_platform_name(self, platform):
+        """
+        Converte o nome da plataforma para o formato usado pelo serviço de autenticação
+        
+        Args:
+            platform: Nome da plataforma detectada
+            
+        Returns:
+            str: Nome da plataforma no formato do serviço de autenticação
+        """
+        # Mapeamento de plataformas detectadas para plataformas suportadas pelo serviço de autenticação
+        platform_mapping = {
+            'youtube': 'youtube',
+            'instagram': 'instagram',
+            'facebook': 'facebook',
+            'kwai': 'kwai',
+            'pinterest': 'pinterest',
+            # Adicionar outros mapeamentos conforme necessário
+        }
+        
+        return platform_mapping.get(platform.lower(), 'unknown')
+    
     def _run_command(self, task_id, command, video_id=None):
         """
         Executa um comando em uma thread separada
@@ -467,7 +544,7 @@ class VideoService:
             if video_id:
                 self.video_repository.update_status(video_id, 'error')
     
-    def _download_and_cut_thread(self, task_id, url, download_path, cut_path, start_time, end_time, video_id):
+    def _download_and_cut_thread(self, task_id, url, download_path, cut_path, start_time, end_time, video_id, cookies=None, cookies_from_browser=None):
         """
         Thread para download e corte sequencial
         
@@ -479,6 +556,8 @@ class VideoService:
             start_time: Tempo inicial do corte
             end_time: Tempo final do corte
             video_id: ID do vídeo
+            cookies: Caminho para o arquivo de cookies (opcional)
+            cookies_from_browser: Navegador para extrair cookies (opcional)
         """
         try:
             # Atualizar status da tarefa
@@ -487,6 +566,31 @@ class VideoService:
             
             # Comando para download
             download_command = f'python download.py --url "{url}" --output "{download_path}"'
+            
+            # Processar parâmetros de cookies
+            cookies_file = None
+            
+            # Se um arquivo de cookies foi fornecido
+            if cookies:
+                cookies_file = get_cookies_file_path(cookies)
+                if not CookieManager.verify_cookies_file(cookies_file):
+                    print(f"Arquivo de cookies não encontrado ou inválido: {cookies_file}")
+                    cookies_file = None
+            
+            # Se foi solicitado extrair cookies do navegador
+            if cookies_from_browser and is_valid_browser(cookies_from_browser):
+                # Extrair cookies do navegador
+                extracted_cookies = CookieManager.save_cookies_from_browser(
+                    browser_name=cookies_from_browser
+                )
+                if extracted_cookies:
+                    cookies_file = extracted_cookies
+            
+            # Adicionar parâmetro de cookies ao comando se disponível
+            if cookies_file and os.path.exists(cookies_file):
+                download_command += f' --cookies "{cookies_file}"'
+            elif cookies_from_browser:
+                download_command += f' --cookies-from-browser "{cookies_from_browser}"'
             
             # Executar comando de download
             download_process = subprocess.Popen(

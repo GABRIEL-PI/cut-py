@@ -1,49 +1,52 @@
-from flask import Blueprint
+from fastapi import APIRouter, Path, Query
+from typing import Optional, List
 from app.controllers.video_controller import VideoController
+from app.models.video_models import VideoDownloadRequest, VideoCutRequest, DownloadAndCutRequest
 
-# Criar blueprint para rotas de vídeo
-video_bp = Blueprint('video', __name__)
+# Criar router para rotas de vídeo
+router = APIRouter(prefix="/videos", tags=["Videos"])
 
 # Instanciar controlador
 video_controller = VideoController()
 
-# Definir rotas
-@video_bp.route('/videos', methods=['POST'])
-def download_video():
-    return video_controller.download_video()
+# Definir rotas - Rotas específicas primeiro
+@router.post('')
+async def download_video(request: VideoDownloadRequest):
+    return video_controller.download_video(request)
 
-@video_bp.route('/videos/<int:video_id>/cut', methods=['POST'])
-def cut_video(video_id):
-    return video_controller.cut_video()
+@router.get('')
+async def get_all_videos(limit: Optional[int] = Query(None)):
+    return video_controller.get_all_videos(limit)
 
-@video_bp.route('/videos/download-and-cut', methods=['POST'])
-def download_and_cut():
-    return video_controller.download_and_cut()
+@router.post('/download-and-cut')
+async def download_and_cut(request: DownloadAndCutRequest):
+    return video_controller.download_and_cut(request)
 
-@video_bp.route('/videos/<int:video_id>', methods=['GET'])
-def get_video(video_id):
-    return video_controller.get_video(video_id)
-
-@video_bp.route('/videos/<int:video_id>/error', methods=['GET'])
-def get_video_error(video_id):
-    return video_controller.get_video_error(video_id)
-
-@video_bp.route('/videos', methods=['GET'])
-def get_all_videos():
-    return video_controller.get_all_videos()
-
-@video_bp.route('/tasks/<string:task_id>', methods=['GET'])
-def get_task_status(task_id):
-    return video_controller.get_task_status(task_id)
-
-@video_bp.route('/tasks', methods=['GET'])
-def get_all_tasks():
-    return video_controller.get_all_tasks()
-
-@video_bp.route('/files', methods=['GET'])
-def list_files():
+@router.get('/files')
+async def list_files():
     return video_controller.list_files()
 
-@video_bp.route('/files/<string:file_type>/<path:filename>', methods=['GET'])
-def download_file(file_type, filename):
+@router.get('/files/{file_type}/{filename}')
+async def download_file(file_type: str = Path(...), filename: str = Path(...)):
     return video_controller.download_file(file_type, filename)
+
+@router.get('/tasks')
+async def get_all_tasks():
+    return video_controller.get_all_tasks()
+
+@router.get('/tasks/{task_id}')
+async def get_task_status(task_id: str = Path(...)):
+    return video_controller.get_task_status(task_id)
+
+# Rotas com parâmetros de caminho por último
+@router.post('/{video_id}/cut')
+async def cut_video(video_id: int = Path(...), request: VideoCutRequest = None):
+    return video_controller.cut_video(request)
+
+@router.get('/{video_id}')
+async def get_video(video_id: str = Path(...)):
+    return video_controller.get_video(video_id)
+
+@router.get('/{video_id}/error')
+async def get_video_error(video_id: str = Path(...)):
+    return video_controller.get_video_error(video_id)

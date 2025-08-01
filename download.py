@@ -3,6 +3,8 @@ import argparse
 import sys
 import json
 import traceback
+import os
+from pathlib import Path
 
 def progress_hook(d):
     if d['status'] == 'downloading':
@@ -37,9 +39,12 @@ def main():
     parser = argparse.ArgumentParser(description="Download de vídeos do YouTube")
     parser.add_argument("--url", type=str, required=True, help="URL do vídeo a ser baixado")
     parser.add_argument("--output", type=str, required=True, help="Caminho para salvar o vídeo")
+    parser.add_argument("--cookies", type=str, help="Caminho para o arquivo de cookies")
+    parser.add_argument("--cookies-from-browser", type=str, help="Navegador para extrair cookies (chrome, firefox, opera, edge, safari)")
 
     args = parser.parse_args()
 
+    # Configurações básicas
     ydl_opts = {
         'format': 'best',
         'outtmpl': args.output,
@@ -48,6 +53,16 @@ def main():
         'no_call_home': True,
         'progress_hooks': [progress_hook],
     }
+    
+    # Adicionar cookies se fornecidos
+    if args.cookies and os.path.exists(args.cookies):
+        ydl_opts['cookiefile'] = args.cookies
+        print(json.dumps({"status": "info", "message": f"Usando arquivo de cookies: {args.cookies}"}), flush=True)
+    
+    # Usar cookies do navegador se especificado
+    if args.cookies_from_browser:
+        ydl_opts['cookiesfrombrowser'] = (args.cookies_from_browser, None, None, None)
+        print(json.dumps({"status": "info", "message": f"Extraindo cookies do navegador: {args.cookies_from_browser}"}), flush=True)
     
     try:
         yt = yt_dlp.YoutubeDL(ydl_opts)

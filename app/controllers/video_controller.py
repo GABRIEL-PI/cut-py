@@ -1,7 +1,10 @@
-from flask import request, jsonify, send_file
+from fastapi import HTTPException, Response, Request, Query
+from fastapi.responses import JSONResponse, FileResponse
 import os
+from typing import Optional, Dict, Any, List, Union
 from app.services.video_service import VideoService
 from app.config import DOWNLOADS_DIR, CUTS_DIR
+from app.models.video_models import VideoDownloadRequest, VideoCutRequest, DownloadAndCutRequest
 
 class VideoController:
     """
@@ -14,80 +17,80 @@ class VideoController:
         """
         self.video_service = VideoService()
     
-    def download_video(self):
+    def download_video(self, request: VideoDownloadRequest):
         """
         Endpoint para baixar vídeos
         """
         try:
-            data = request.get_json()
+            # O método download_video retorna (resultado, status_code)
+            result, status_code = self.video_service.download_video(
+                url=request.url,
+                filename=request.filename,
+                validate=request.validate,
+                cookies=request.cookies,
+                cookies_from_browser=request.cookies_from_browser
+            )
             
-            if not data or 'url' not in data:
-                return jsonify({'error': 'URL é obrigatória'}), 400
+            # Se o status_code não for 200, lançar uma exceção HTTP
+            if status_code != 200:
+                raise HTTPException(status_code=status_code, detail=result)
+                
+            return result
             
-            url = data['url']
-            filename = data.get('filename')
-            
-            result = self.video_service.download_video(url, filename)
-            
-            return jsonify(result)
-            
+        except HTTPException as e:
+            # Repassar exceções HTTP
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            # Converter outras exceções em HTTPException
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def cut_video(self):
+    def cut_video(self, request: VideoCutRequest):
         """
         Endpoint para cortar vídeos
         """
         try:
-            data = request.get_json()
-            
-            required_fields = ['video_id', 'start_time', 'end_time']
-            for field in required_fields:
-                if not data or field not in data:
-                    return jsonify({'error': f'{field} é obrigatório'}), 400
-            
-            video_id = data['video_id']
-            start_time = data['start_time']
-            end_time = data['end_time']
-            output_filename = data.get('output_filename')
-            
             result, status_code = self.video_service.cut_video(
-                video_id, start_time, end_time, output_filename
+                video_id=request.video_id,
+                start_time=request.start_time,
+                end_time=request.end_time,
+                output_filename=request.output_filename
             )
             
-            return jsonify(result), status_code
+            # Se o status_code não for 200, lançar uma exceção HTTP
+            if status_code != 200:
+                raise HTTPException(status_code=status_code, detail=result)
+                
+            return result
             
+        except HTTPException as e:
+            # Repassar exceções HTTP
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            # Converter outras exceções em HTTPException
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def download_and_cut(self):
+    def download_and_cut(self, request: DownloadAndCutRequest):
         """
         Endpoint para baixar e cortar vídeo em uma operação
         """
         try:
-            data = request.get_json()
-            
-            required_fields = ['url', 'start_time', 'end_time']
-            for field in required_fields:
-                if not data or field not in data:
-                    return jsonify({'error': f'{field} é obrigatório'}), 400
-            
-            url = data['url']
-            start_time = data['start_time']
-            end_time = data['end_time']
-            filename = data.get('filename')
-            output_filename = data.get('output_filename')
-            
             result = self.video_service.download_and_cut(
-                url, start_time, end_time, filename, output_filename
+                url=request.url,
+                start_time=request.start_time,
+                end_time=request.end_time,
+                filename=request.filename,
+                output_filename=request.output_filename,
+                cookies=request.cookies,
+                cookies_from_browser=request.cookies_from_browser
             )
             
-            return jsonify(result)
+            return result
             
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            # Converter exceções em HTTPException
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def get_task_status(self, task_id):
+    def get_task_status(self, task_id: str):
         """
         Endpoint para obter status de uma tarefa
         
@@ -96,10 +99,14 @@ class VideoController:
         """
         try:
             result, status_code = self.video_service.get_task_status(task_id)
-            return jsonify(result), status_code
+            if status_code != 200:
+                raise HTTPException(status_code=status_code, detail=result)
+            return result
             
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
     def get_all_tasks(self):
         """
@@ -107,12 +114,12 @@ class VideoController:
         """
         try:
             tasks = self.video_service.get_all_tasks()
-            return jsonify(tasks)
+            return tasks
             
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def get_video(self, video_id):
+    def get_video(self, video_id: str):
         """
         Endpoint para obter informações de um vídeo
         
@@ -121,12 +128,16 @@ class VideoController:
         """
         try:
             result, status_code = self.video_service.get_video(video_id)
-            return jsonify(result), status_code
+            if status_code != 200:
+                raise HTTPException(status_code=status_code, detail=result)
+            return result
             
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def get_video_error(self, video_id):
+    def get_video_error(self, video_id: str):
         """
         Endpoint para obter detalhes de erro de um vídeo
         
@@ -136,53 +147,52 @@ class VideoController:
         try:
             # Obter detalhes de erro do vídeo
             error_details, status_code = self.video_service.get_video_error_details(video_id)
-            return jsonify(error_details), status_code
+            if status_code != 200:
+                raise HTTPException(status_code=status_code, detail=error_details)
+            return error_details
             
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
-    def get_all_videos(self):
+    def get_all_videos(self, limit: Optional[int] = Query(None)):
         """
         Endpoint para listar todos os vídeos
         """
         try:
-            limit = request.args.get('limit', type=int)
             videos = self.video_service.get_all_videos(limit)
-            return jsonify(videos)
+            return videos
             
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})
     
     def list_files(self):
         """
-        Endpoint para listar arquivos disponíveis
+        Endpoint para listar arquivos disponíveis para download
         """
         try:
-            files = {
-                'downloads': [],
-                'cuts': []
+            # Listar arquivos na pasta de downloads
+            download_files = []
+            if os.path.exists(DOWNLOADS_DIR):
+                download_files = [f for f in os.listdir(DOWNLOADS_DIR) if os.path.isfile(os.path.join(DOWNLOADS_DIR, f))]
+            
+            # Listar arquivos na pasta de cortes
+            cut_files = []
+            if os.path.exists(CUTS_DIR):
+                cut_files = [f for f in os.listdir(CUTS_DIR) if os.path.isfile(os.path.join(CUTS_DIR, f))]
+            
+            return {
+                'downloads': download_files,
+                'cuts': cut_files
             }
             
-            # Listar downloads
-            if os.path.exists(DOWNLOADS_DIR):
-                files['downloads'] = [f for f in os.listdir(DOWNLOADS_DIR) if os.path.isfile(os.path.join(DOWNLOADS_DIR, f))]
-            
-            # Listar cortes
-            if os.path.exists(CUTS_DIR):
-                files['cuts'] = [f for f in os.listdir(CUTS_DIR) if os.path.isfile(os.path.join(CUTS_DIR, f))]
-            
-            return jsonify(files)
-            
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
-    
-    def download_file(self, file_type, filename):
+            raise HTTPException(status_code=500, detail={'error': str(e)})
+            
+    def download_file(self, file_type: str, filename: str):
         """
         Endpoint para baixar um arquivo
-        
-        Args:
-            file_type: Tipo do arquivo (download ou cut)
-            filename: Nome do arquivo
         """
         try:
             if file_type == 'download':
@@ -190,12 +200,13 @@ class VideoController:
             elif file_type == 'cut':
                 file_path = os.path.join(CUTS_DIR, filename)
             else:
-                return jsonify({'error': 'Tipo de arquivo inválido'}), 400
+                raise HTTPException(status_code=400, detail={'error': 'Tipo de arquivo inválido'})
             
             if not os.path.exists(file_path):
-                return jsonify({'error': f'Arquivo {filename} não encontrado'}), 404
+                raise HTTPException(status_code=404, detail={'error': 'Arquivo não encontrado'})
             
-            return send_file(file_path, as_attachment=True)
-            
+            return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')            
+        except HTTPException as e:
+            raise e
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=500, detail={'error': str(e)})

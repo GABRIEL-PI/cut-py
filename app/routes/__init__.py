@@ -1,6 +1,6 @@
 # Inicialização do pacote routes
-from app.routes.video_routes import video_bp
-from app.routes.health_routes import health_bp
+from app.routes.health_routes import router as health_router
+from app.routes.video_routes import router as video_router
 
-# Exportar blueprints
-__all__ = ['video_bp', 'health_bp']
+# Exportar routers
+__all__ = ['health_router', 'video_router']

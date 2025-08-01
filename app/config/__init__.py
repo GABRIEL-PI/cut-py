@@ -4,6 +4,12 @@ from dotenv import load_dotenv
 # Carregar variáveis de ambiente
 load_dotenv()
 
+# Configurações de cookies
+COOKIE_SECRET_KEY = os.getenv("COOKIE_SECRET_KEY", "default_secret_key")
+COOKIE_MAX_AGE = int(os.getenv("COOKIE_MAX_AGE", "3600"))  # Tempo em segundos (1 hora padrão)
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "False").lower() == "true"
+COOKIE_HTTPONLY = os.getenv("COOKIE_HTTPONLY", "True").lower() == "true"
+
 # Diretórios para armazenar os arquivos
 DOWNLOADS_DIR = os.path.join(os.getcwd(), "downloads")
 CUTS_DIR = os.path.join(os.getcwd(), "cuts")

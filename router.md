@@ -45,7 +45,9 @@ Inicia o download de um vídeo a partir de uma URL.
 ```json
 {
   "url": "https://www.youtube.com/watch?v=exemplo",
-  "filename": "meu_video.mp4" // Opcional
+  "filename": "meu_video.mp4", // Opcional
+  "cookies": "youtube_cookies.txt", // Opcional - Caminho para arquivo de cookies
+  "cookies_from_browser": "chrome" // Opcional - Navegador para extrair cookies (chrome, firefox, opera, edge, safari)
 }
 ```
 
@@ -105,7 +107,9 @@ Baixa e corta um vídeo em uma única operação.
   "start_time": "00:01:30",
   "end_time": "00:02:45",
   "filename": "meu_video.mp4", // Opcional
-  "output_filename": "meu_corte.mp4" // Opcional
+  "output_filename": "meu_corte.mp4", // Opcional
+  "cookies": "youtube_cookies.txt", // Opcional - Caminho para arquivo de cookies
+  "cookies_from_browser": "chrome" // Opcional - Navegador para extrair cookies (chrome, firefox, opera, edge, safari)
 }
 ```
 
